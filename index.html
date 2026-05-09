@@ -1289,31 +1289,21 @@ const SKILL_TYPES = {
     name: 'Язык',
     icon: '🗣',
     defaultSubs: [
-      { id: 'listening', name: 'Listening', desc: 'Аудирование', color: '#00E5FF' },
-      { id: 'speaking', name: 'Speaking', desc: 'Говорение', color: '#FF4DD8' },
-      { id: 'reading', name: 'Reading', desc: 'Чтение', color: '#FFAA00' },
-      { id: 'writing', name: 'Writing', desc: 'Письмо', color: '#A78BFA' },
-      { id: 'grammar', name: 'Grammar', desc: 'Грамматика', color: '#10E891' },
-      { id: 'vocabulary', name: 'Vocabulary', desc: 'Словарь', color: '#FF3D71' }
+      { id: 'listening',  name: 'Listening',  desc: 'Аудирование', color: '#00E5FF' },
+      { id: 'speaking',   name: 'Speaking',   desc: 'Говорение',   color: '#FF4DD8' },
+      { id: 'reading',    name: 'Reading',    desc: 'Чтение',      color: '#FFAA00' },
+      { id: 'writing',    name: 'Writing',    desc: 'Письмо',      color: '#A78BFA' },
+      { id: 'grammar',    name: 'Grammar',    desc: 'Грамматика',  color: '#10E891' },
+      { id: 'vocabulary', name: 'Vocabulary', desc: 'Словарь',     color: '#FF3D71' }
     ]
   },
   tech: {
     name: 'Тех. навык',
     icon: '⚙',
     defaultSubs: [
-      { id: 'theory', name: 'Теория', desc: 'Изучение материала', color: '#00E5FF' },
-      { id: 'practice', name: 'Практика', desc: 'Кодинг / задачи', color: '#10E891' },
-      { id: 'project', name: 'Проекты', desc: 'Свои проекты', color: '#A78BFA' }
-    ]
-  },
-  fleet: {
-    name: 'Флит-менеджмент',
-    icon: '◆',
-    defaultSubs: [
-      { id: 'utilization', name: 'Утилизация машин', desc: 'Загрузка флита, простои', color: '#10E891', invertGood: false },
-      { id: 'rent_collection', name: 'Сбор аренды', desc: 'Работа с дебеторкой по аренде', color: '#FFAA00', invertGood: false },
-      { id: 'fines', name: 'Штрафы', desc: 'Разбор / обжалование', color: '#00E5FF', invertGood: false },
-      { id: 'fired_debt', name: 'Уволенные с дебеторкой', desc: 'Антиметрика — должен оставаться 0', color: '#FF3D71', invertGood: true }
+      { id: 'theory',   name: 'Теория',   desc: 'Изучение материала', color: '#00E5FF' },
+      { id: 'practice', name: 'Практика', desc: 'Кодинг / задачи',    color: '#10E891' },
+      { id: 'project',  name: 'Проекты',  desc: 'Свои проекты',       color: '#A78BFA' }
     ]
   },
   custom: {
@@ -1752,6 +1742,7 @@ let state = null;
 let view = {
   tab: 'tree', sphereId: null, stageId: null, achId: null, addingTask: false, onboardStep: 0,
   confirmUndoId: null, contextVisible: false, editingGoalSphere: null, addMode: 'simple',
+  todoAdding: false, todoNewCat: 'body', todoFilterCat: 'all',
   countersFilter: 'all', countersPeriod: 'all',
   customFrom: null, customTo: null,
   calendarVisible: false,
@@ -2165,6 +2156,8 @@ function load() {
   if (!state.adaptive.adjustments) state.adaptive.adjustments = {};
   // Удалённые обязательные задачи (чтобы не возвращались)
   if (!state.dismissedMandatory) state.dismissedMandatory = [];
+  // Ежедневные задачи (без XP, только на главном экране)
+  if (!state.dailyTodos) state.dailyTodos = [];
   // Гарантируем что обязательные задачи всегда есть
   ensureMandatoryTasks();
   state.history.forEach(h => { if (!h.taskKey) h.taskKey = null; });
@@ -2775,6 +2768,102 @@ function renderTree() {
   });
 
   html += '</div>';
+
+  // ── БЛОК «СЕГОДНЯ» ──────────────────────────────────────────────────────────
+  const TODOS_CATS = [
+    { id: 'body',     label: 'Тело',     icon: '⚡' },
+    { id: 'career',   label: 'Карьера',  icon: '◆' },
+    { id: 'skills',   label: 'Навыки',   icon: '✦' },
+    { id: 'religion', label: 'Религия',  icon: '☾' },
+    { id: 'money',    label: 'Финансы',  icon: '◈' },
+    { id: 'other',    label: 'Прочее',   icon: '📌' },
+  ];
+
+  const todayISO = today();
+  // Задачи которые были добавлены не сегодня и не выполнены — оставляем
+  // (выполненные сразу уходят в историю и удаляются)
+
+  const todos = state.dailyTodos || [];
+  const doneCnt = todos.filter(t => t.done).length;
+  const totalCnt = todos.length;
+  const isAdding = !!view.todoAdding;
+  const activeCat = view.todoFilterCat || 'all';
+  const filtered = activeCat === 'all' ? todos : todos.filter(t => t.cat === activeCat);
+
+  html += '<div style="margin-top: 24px;">';
+
+  // Заголовок
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">'
+    + '<div>'
+    + '<div style="font-size:10px;letter-spacing:0.25em;color:var(--accent,#ff7a3c);text-transform:uppercase;font-weight:700;margin-bottom:2px;">Сегодня</div>'
+    + (totalCnt > 0
+      ? '<div style="font-size:11px;color:var(--text-3,#9a9384);">' + doneCnt + ' из ' + totalCnt + ' выполнено</div>'
+      : '<div style="font-size:11px;color:var(--text-4,#6c675e);">Добавь первое дело</div>')
+    + '</div>'
+    + '<button onclick="window.__app.todoStartAdd()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--accent-soft,rgba(255,122,60,0.14));border:1px solid var(--accent,#ff7a3c);border-radius:20px;color:var(--accent,#ff7a3c);font-size:12px;font-weight:700;cursor:pointer;">'
+    + (isAdding ? '✕ Отмена' : '+ Добавить') + '</button>'
+    + '</div>';
+
+  // Форма добавления
+  if (isAdding) {
+    const selCat = view.todoNewCat || 'other';
+    html += '<div style="background:var(--surface,#1d2229);border:1px solid var(--accent,#ff7a3c);border-radius:14px;padding:14px;margin-bottom:12px;animation:fr-fade-up 0.3s cubic-bezier(0.22,1,0.36,1) both;">'
+      + '<input id="todo-input" type="text" placeholder="Что нужно сделать сегодня?" maxlength="120" style="width:100%;padding:10px 12px;background:var(--input,#14181f);border:1px solid var(--border,#2c3340);border-radius:10px;color:var(--text-1,#f4ede0);font-size:14px;outline:none;margin-bottom:10px;" />'
+      + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">'
+      + TODOS_CATS.map(c =>
+          '<button onclick="window.__app.todoSetCat(\'' + c.id + '\')" style="display:flex;align-items:center;gap:5px;padding:5px 11px;'
+          + 'background:' + (selCat===c.id?'var(--accent,#ff7a3c)':'var(--surface-2,#242a34)') + ';'
+          + 'border:1px solid ' + (selCat===c.id?'var(--accent,#ff7a3c)':'var(--border,#2c3340)') + ';'
+          + 'border-radius:20px;color:' + (selCat===c.id?'var(--accent-fg,#14181f)':'var(--text-3,#9a9384)') + ';'
+          + 'font-size:11px;font-weight:600;cursor:pointer;">' + c.icon + ' ' + c.label + '</button>'
+        ).join('')
+      + '</div>'
+      + '<button onclick="window.__app.todoConfirmAdd()" style="width:100%;padding:11px;background:linear-gradient(135deg,#A78BFA,#FF4DD8);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Добавить дело</button>'
+      + '</div>';
+    setTimeout(() => document.getElementById('todo-input')?.focus(), 50);
+  }
+
+  // Фильтр категорий
+  if (todos.length > 0) {
+    html += '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;-webkit-overflow-scrolling:touch;">'
+      + '<button onclick="window.__app.todoFilterCat(\'all\')" style="flex-shrink:0;padding:5px 12px;background:' + (activeCat==='all'?'var(--accent-soft,rgba(255,122,60,0.14))':'var(--surface-2,#242a34)') + ';border:1px solid ' + (activeCat==='all'?'var(--accent,#ff7a3c)':'var(--border,#2c3340)') + ';border-radius:20px;color:' + (activeCat==='all'?'var(--accent,#ff7a3c)':'var(--text-3,#9a9384)') + ';font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">Все</button>';
+    TODOS_CATS.forEach(c => {
+      if (!todos.find(t => t.cat === c.id)) return;
+      html += '<button onclick="window.__app.todoFilterCat(\'' + c.id + '\')" style="flex-shrink:0;display:flex;align-items:center;gap:4px;padding:5px 11px;background:' + (activeCat===c.id?'var(--accent-soft,rgba(255,122,60,0.14))':'var(--surface-2,#242a34)') + ';border:1px solid ' + (activeCat===c.id?'var(--accent,#ff7a3c)':'var(--border,#2c3340)') + ';border-radius:20px;color:' + (activeCat===c.id?'var(--accent,#ff7a3c)':'var(--text-3,#9a9384)') + ';font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">' + c.icon + ' ' + c.label + '</button>';
+    });
+    html += '</div>';
+  }
+
+  // Список задач
+  if (filtered.length === 0 && !isAdding) {
+    html += '<div style="text-align:center;padding:28px 20px;background:var(--surface,#1d2229);border:1px dashed var(--border,#2c3340);border-radius:14px;">'
+      + '<div style="font-size:28px;margin-bottom:8px;opacity:0.35;">📋</div>'
+      + '<div style="font-size:13px;color:var(--text-3,#9a9384);">Дела на сегодня пусты</div>'
+      + '</div>';
+  } else {
+    filtered.forEach((t, idx) => {
+      const cat = TODOS_CATS.find(c => c.id === t.cat) || TODOS_CATS[5];
+      const sphere = SPHERES.find(s => s.id === t.cat);
+      const accentColor = sphere ? sphere.color : 'var(--accent,#ff7a3c)';
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;background:var(--surface,#1d2229);border:1px solid var(--border,#2c3340);border-left:3px solid ' + accentColor + ';border-radius:12px;margin-bottom:6px;animation:fr-fade-up ' + (0.2+idx*0.04) + 's cubic-bezier(0.22,1,0.36,1) both;">'
+        // Чекбокс — нажал → уходит в хронику
+        + '<button onclick="window.__app.todoToggle(\'' + t.id + '\')" style="width:22px;height:22px;border-radius:50%;flex-shrink:0;padding:0;background:transparent;border:2px solid var(--border-2,#3d4658);display:flex;align-items:center;justify-content:center;cursor:pointer;"></button>'
+        // Иконка сферы
+        + '<span style="font-size:16px;flex-shrink:0;color:' + accentColor + ';">' + cat.icon + '</span>'
+        // Текст
+        + '<div style="flex:1;min-width:0;">'
+        + '<div style="font-size:13px;font-weight:500;color:var(--text-1,#f4ede0);">' + escapeHtml(t.text) + '</div>'
+        + '<div style="font-size:10px;color:var(--text-4,#6c675e);margin-top:1px;">' + cat.label + '</div>'
+        + '</div>'
+        // Удалить
+        + '<button onclick="window.__app.todoDelete(\'' + t.id + '\')" style="width:26px;height:26px;border-radius:8px;flex-shrink:0;padding:0;background:transparent;border:1px solid var(--border,#2c3340);color:var(--text-4,#6c675e);cursor:pointer;font-size:13px;">✕</button>'
+        + '</div>';
+    });
+  }
+
+  html += '</div>';
+  // ────────────────────────────────────────────────────────────────────────────
+
   return html;
 }
 
@@ -3604,9 +3693,15 @@ function renderHistory() {
       html += `<div style="margin-top: 4px; padding-left: 6px;">`;
       items.forEach(h => {
         const sphere = SPHERES.find(s => s.id === h.sphere);
+        const sphereColor = sphere ? sphere.color : 'var(--accent,#ff7a3c)';
+        const sphereName = h.type === 'daily_todo'
+          ? (h.sphereName || 'Прочее') + ' · дело'
+          : (sphere ? sphere.name : '—');
         const isC = view.confirmUndoId === h.id;
         const hL = h.hours ? ` · ${h.hours}ч` : '';
-        html += `<div style="padding: 11px 13px; background: ${isC ? 'rgba(255,61,113,0.1)' : 'rgba(255,255,255,0.03)'}; border-left: 3px solid ${isC ? '#FF3D71' : sphere.color}; border-radius: 8px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 10px;"><div style="flex: 1; min-width: 0;"><div style="font-size: 13px; color: #fff; word-break: break-word;">${escapeHtml(h.title)}</div><div style="font-size: 9px; color: ${sphere.color}; letter-spacing: 0.15em; text-transform: uppercase; margin-top: 3px; font-weight: 600;">${sphere.name}${hL}</div></div><div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;"><div style="font-size: 13px; color: ${isC ? '#FF3D71' : '#A78BFA'}; font-weight: 700; ${isC ? 'text-decoration: line-through;' : ''}">${isC ? '−' : '+'}${h.xp}</div><button onclick="window.__app.undo('${h.id}')" style="width: 24px; height: 24px; background: ${isC ? '#FF3D71' : 'transparent'}; border: 1px solid ${isC ? '#FF3D71' : 'rgba(255,255,255,0.15)'}; border-radius: 50%; color: ${isC ? '#fff' : '#8870a8'}; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; font-size: 11px;">${isC ? '✓' : '✕'}</button></div></div>`;
+        const isDailyTodo = h.type === 'daily_todo';
+        const xpStr = isDailyTodo ? '✓' : (isC ? '−' : '+') + h.xp;
+        html += `<div style="padding: 11px 13px; background: ${isC ? 'rgba(255,61,113,0.1)' : isDailyTodo ? 'rgba(255,122,60,0.06)' : 'rgba(255,255,255,0.03)'}; border-left: 3px solid ${isC ? '#FF3D71' : sphereColor}; border-radius: 8px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 10px;"><div style="flex: 1; min-width: 0;"><div style="font-size: 13px; color: #fff; word-break: break-word;">${isDailyTodo ? (h.sphereEmoji || '📌') + ' ' : ''}${escapeHtml(h.title)}</div><div style="font-size: 9px; color: ${sphereColor}; letter-spacing: 0.15em; text-transform: uppercase; margin-top: 3px; font-weight: 600;">${sphereName}${hL}</div></div><div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;"><div style="font-size: 13px; color: ${isDailyTodo ? 'var(--accent,#ff7a3c)' : isC ? '#FF3D71' : '#A78BFA'}; font-weight: 700;">${xpStr}</div><button onclick="window.__app.undo('${h.id}')" style="width: 24px; height: 24px; background: ${isC ? '#FF3D71' : 'transparent'}; border: 1px solid ${isC ? '#FF3D71' : 'rgba(255,255,255,0.15)'}; border-radius: 50%; color: ${isC ? '#fff' : '#8870a8'}; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; font-size: 11px;">${isC ? '✓' : '✕'}</button></div></div>`;
       });
       html += `</div>`;
     }
@@ -3678,7 +3773,7 @@ function renderSkillsPanel(sphere) {
       <div style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;" id="skill-type-row">
         ${Object.entries(SKILL_TYPES).map(([k, v]) => { const isActive = (window.__newSkillType || 'language') === k; return `<button data-stype="${k}" onclick="window.__app.setNewSkillType('${k}')" style="flex: 1; min-width: 80px; padding: 10px 6px; background: ${isActive ? s.color : 'transparent'}; color: ${isActive ? '#000' : '#b0a0d0'}; border: 1px solid ${isActive ? s.color : 'rgba(255,255,255,0.1)'}; border-radius: 8px; font-size: 11px; cursor: pointer; font-weight: 700; line-height: 1.3;"><div style="font-size: 16px; margin-bottom: 2px;">${v.icon}</div>${v.name}</button>`; }).join('')}
       </div>
-      <div style="font-size: 10px; color: #6a5a8a; margin-bottom: 10px; line-height: 1.4;">«Язык» — 6 субкатегорий (listening, speaking и т.д.). «Тех. навык» — 3 (теория, практика, проекты). «Флит-менеджмент» — 4 KPI (утилизация, аренда, штрафы, увольнения с долгом). «Свой» — пустой.</div>
+      <div style="font-size: 10px; color: #6a5a8a; margin-bottom: 10px; line-height: 1.4;">«Язык» — 6 субкатегорий (listening, speaking и т.д.). «Тех. навык» — 3 (теория, практика, проекты). «Свой» — настрой сам.</div>
       <div style="display: flex; gap: 8px;">
         <button onclick="window.__app.confirmAddSkill()" style="flex: 1; padding: 11px; background: linear-gradient(135deg,${s.color},${s.color}cc); color: #000; border: none; border-radius: 8px; font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; cursor: pointer; font-weight: 700;">Создать</button>
         <button onclick="window.__app.cancelAddSkill()" style="padding: 11px 16px; background: transparent; color: #8870a8; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; font-size: 11px; cursor: pointer;">Отмена</button>
@@ -4813,6 +4908,71 @@ window.__app = {
   removeFinEntry: id => {
     removeFinEntry(id);
   },
+
+  // ── DAILY TODOS ──────────────────────────────────────────────────────────────
+  todoStartAdd: () => {
+    view.todoAdding = !view.todoAdding;
+    if (!view.todoAdding) view.todoNewCat = 'other';
+    render();
+  },
+  todoSetCat: (cat) => {
+    view.todoNewCat = cat;
+    render();
+  },
+  todoConfirmAdd: () => {
+    const el = document.getElementById('todo-input');
+    const text = el?.value?.trim();
+    if (!text) { el?.focus(); return; }
+    if (!state.dailyTodos) state.dailyTodos = [];
+    state.dailyTodos.push({
+      id: Date.now().toString(36),
+      text,
+      cat: view.todoNewCat || 'other',
+      done: false,
+      doneDate: null,
+      createdAt: today(),
+    });
+    view.todoAdding = false;
+    view.todoNewCat = 'other';
+    save(); render();
+  },
+  todoToggle: (id) => {
+    const t = (state.dailyTodos || []).find(x => x.id === id);
+    if (!t) return;
+    if (!t.done) {
+      // Отмечаем выполненной — добавляем в историю и удаляем из списка
+      const cat = ['body','career','skills','religion','money'].includes(t.cat) ? t.cat : null;
+      const sphere = cat ? SPHERES.find(s => s.id === cat) : null;
+      state.history.push({
+        id: Date.now().toString(36),
+        type: 'daily_todo',
+        title: t.text,
+        sphere: cat || 'other',
+        sphereName: sphere ? sphere.name : 'Прочее',
+        sphereEmoji: sphere ? sphere.emoji : '📌',
+        xp: 0,
+        hours: 0,
+        date: today(),
+        ts: Date.now(),
+        taskKey: null,
+      });
+      state.dailyTodos = state.dailyTodos.filter(x => x.id !== id);
+      save(); render();
+      showToast('✓ Готово!', 'var(--accent,#ff7a3c)');
+    } else {
+      t.done = false; t.doneDate = null;
+      save(); render();
+    }
+  },
+  todoDelete: (id) => {
+    state.dailyTodos = (state.dailyTodos || []).filter(x => x.id !== id);
+    save(); render();
+  },
+  todoFilterCat: (cat) => {
+    view.todoFilterCat = cat;
+    render();
+  },
+  // ─────────────────────────────────────────────────────────────────────────────
   setFinChartPeriod: p => { view.finChartPeriod = p; render(); },
   shiftChartMonth: (dir) => {
     const ms = view.finChartMonth || currentMonth();
@@ -4849,7 +5009,7 @@ window.__app = {
   startAddSkill: () => {
     view.skillAdding = true;
     // Дефолтный тип зависит от сферы
-    const defaults = { skills: 'language', career: 'fleet' };
+    const defaults = { skills: 'language', career: 'language' };
     window.__newSkillType = defaults[view.sphereId] || 'custom';
     render();
   },
